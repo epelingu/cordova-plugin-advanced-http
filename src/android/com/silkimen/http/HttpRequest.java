@@ -31,6 +31,8 @@ import static java.net.HttpURLConnection.HTTP_NOT_MODIFIED;
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.net.Proxy.Type.HTTP;
 
+import android.util.Log;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -2482,6 +2484,52 @@ public class HttpRequest {
    * @return this request
    * @throws IOException
    */
+  protected HttpRequest copy(final InputStream input, final OutputStream output, final Long size) throws IOException {
+    return new CloseOperation<HttpRequest>(input, ignoreCloseExceptions) {
+
+      @Override
+      public HttpRequest run() throws IOException {
+        final byte[] buffer = new byte[bufferSize];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+          output.write(buffer, 0, read);
+          totalWritten += read;
+          try {
+            progress.onUpload(totalWritten, size);
+          } catch (Exception e) {
+            Log.w("Upload", "Progress callback failed", e);
+          }
+
+         // progress.onUpload(totalWritten, size); // totalSize
+        }
+        return HttpRequest.this;
+      }
+    }.call();
+  }
+
+
+  protected void uploadStream(final InputStream input, final Long totalSize) throws IOException {
+    byte[] buffer = new byte[8192];
+    int read;
+    long totalWritten = 0;
+
+    while ((read = input.read(buffer)) != -1) {
+      output.write(buffer, 0, read); // This is your actual upload stream
+      totalWritten += read;
+
+      if (totalSize != null) {
+        try {
+          progress.onUpload(totalWritten, totalSize);
+        } catch (Exception e) {
+          Log.w("Upload", "Progress callback failed", e);
+        }
+      }
+    }
+
+    output.flush();
+  }
+
+
   protected HttpRequest copy(final InputStream input, final OutputStream output) throws IOException {
     return new CloseOperation<HttpRequest>(input, ignoreCloseExceptions) {
 
@@ -2492,7 +2540,7 @@ public class HttpRequest {
         while ((read = input.read(buffer)) != -1) {
           output.write(buffer, 0, read);
           totalWritten += read;
-          progress.onUpload(totalWritten, totalSize);
+          progress.onUpload(totalWritten, totalSize); // totalSize
         }
         return HttpRequest.this;
       }
@@ -2796,6 +2844,24 @@ public class HttpRequest {
       startPart();
       writePartHeader(name, filename, contentType);
       copy(part, output);
+    } catch (IOException e) {
+      throw new HttpRequestException(e);
+    }
+    return this;
+  }
+
+
+  public HttpRequest part(final String name, final String filename, final String contentType, final InputStream part, final Long size, final Boolean fileExist)
+          throws HttpRequestException {
+    try {
+      this.connection.setChunkedStreamingMode(8192);
+      startPart();
+      writePartHeader(name, filename, contentType);
+      if(!fileExist){
+        copy(part, output, size);
+      }else{
+        uploadStream(part, size);
+      }
     } catch (IOException e) {
       throw new HttpRequestException(e);
     }
