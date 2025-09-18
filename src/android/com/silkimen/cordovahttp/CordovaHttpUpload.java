@@ -11,6 +11,7 @@ import com.silkimen.http.HttpRequest;
 import com.silkimen.http.TLSConfiguration;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URI;
 
@@ -57,8 +58,18 @@ class CordovaHttpUpload extends CordovaHttpBase {
         InputStream inputStream = this.applicationContext.getContentResolver().openInputStream(fileUri);
         String fileName = this.getFileNameFromContentScheme(fileUri, this.applicationContext).trim();
         String mimeType = this.getMimeTypeFromFileName(fileName);
+        Long size = this.getFileSizeFromUri(fileUri);
 
-        request.part(uploadName, fileName, mimeType, inputStream);
+        File cacheFile = new File(this.applicationContext.getCacheDir(), fileName);
+        if (cacheFile.exists()) {
+          // File already cached, upload directly
+          InputStream cachedStream = new FileInputStream(cacheFile);
+          request.part(uploadName, fileName, mimeType, cachedStream, size, true);
+          cachedStream.close(); // Close after use
+          return;
+        }else {
+          request.part(uploadName, fileName, mimeType, inputStream, size, false);
+        }
       }
     }
   }
@@ -87,5 +98,18 @@ class CordovaHttpUpload extends CordovaHttpBase {
     String extension = fileName.substring(extIndex).toLowerCase();
 
     return mimeTypeMap.getMimeTypeFromExtension(extension);
+  }
+
+  public long getFileSizeFromUri(Uri uri) {
+    Cursor cursor = applicationContext.getContentResolver().query(uri, null, null, null, null);
+    long size = -1;
+    if (cursor != null) {
+      int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+      if (sizeIndex != -1 && cursor.moveToFirst()) {
+        size = cursor.getLong(sizeIndex);
+      }
+      cursor.close();
+    }
+    return size;
   }
 }
