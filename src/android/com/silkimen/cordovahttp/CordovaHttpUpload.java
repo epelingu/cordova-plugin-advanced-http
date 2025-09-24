@@ -5,6 +5,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
+import android.util.Log;
 import android.webkit.MimeTypeMap;
 
 import com.silkimen.http.HttpRequest;
@@ -18,7 +19,9 @@ import java.net.URI;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLSocketFactory;
 
+import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 class CordovaHttpUpload extends CordovaHttpBase {
@@ -26,14 +29,17 @@ class CordovaHttpUpload extends CordovaHttpBase {
   private JSONArray uploadNames;
   private Context applicationContext;
 
+  private boolean hasProgressHandler;
+
   public CordovaHttpUpload(String url, JSONObject headers, JSONArray filePaths, JSONArray uploadNames, int connectTimeout, int readTimeout,
-      boolean followRedirects, String responseType, TLSConfiguration tlsConfiguration,
+      boolean followRedirects,boolean hasProgressHandler, String responseType, TLSConfiguration tlsConfiguration,
       Context applicationContext, CordovaObservableCallbackContext callbackContext) {
 
     super("POST", url, headers, connectTimeout, readTimeout, followRedirects, responseType, tlsConfiguration, callbackContext);
     this.filePaths = filePaths;
     this.uploadNames = uploadNames;
     this.applicationContext = applicationContext;
+    this.hasProgressHandler = hasProgressHandler;
   }
 
   @Override
@@ -61,15 +67,58 @@ class CordovaHttpUpload extends CordovaHttpBase {
         Long size = this.getFileSizeFromUri(fileUri);
 
         File cacheFile = new File(this.applicationContext.getCacheDir(), fileName);
+
+        HttpRequest.UploadProgress uploadProgress = new HttpRequest.UploadProgress() {
+          @Override
+          public void onUpload(long uploaded, long total) {
+            if (hasProgressHandler) {
+              JSONObject json = new JSONObject();
+              try {
+                json.put("isProgress", true);
+                json.put("transferred", uploaded);
+                json.put("total", total);
+                Log.e(TAG, "onUpload Sending progress");
+                Log.e(TAG, String.valueOf(json));
+                PluginResult result = new PluginResult(PluginResult.Status.OK, json);
+                result.setKeepCallback(true);
+                callbackContext.getCallbackContext().sendPluginResult(result);
+              } catch (JSONException e) {
+                Log.e(TAG, "onUpload progress error", e);
+              }
+            }
+          }
+        };
+
+
         if (cacheFile.exists()) {
           // File already cached, upload directly
           InputStream cachedStream = new FileInputStream(cacheFile);
-          request.part(uploadName, fileName, mimeType, cachedStream, size, true);
+          request.part(uploadName, fileName, mimeType, cachedStream, size, true, uploadProgress);
           cachedStream.close(); // Close after use
           return;
         }else {
-          request.part(uploadName, fileName, mimeType, inputStream, size, false);
+          request.part(uploadName, fileName, mimeType, inputStream, size, false, uploadProgress);
         }
+
+//        if (this.hasProgressHandler) {
+//          request.progress(new HttpRequest.UploadProgress() {
+//            public void onUpload(long transferred, long total) {
+//              JSONObject json = new JSONObject();
+//              try {
+//                json.put("isProgress", true);
+//                json.put("transferred", transferred);
+//                json.put("total", total);
+//
+//                PluginResult result = new PluginResult(PluginResult.Status.OK, json);
+//                result.setKeepCallback(true);
+//                callbackContext.getCallbackContext().sendPluginResult(result);
+//              } catch (JSONException e) {
+//                Log.e(TAG, "onUpload progress error", e);
+//              }
+//            }
+//          });
+//        }
+
       }
     }
   }

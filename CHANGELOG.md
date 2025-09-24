@@ -1,5 +1,11 @@
 # Changelog
 
+# 3.3.2
+- Added progress for file upload
+- Added functionality to handle large file upload without making app to crash
+- Used background thread for better performace
+- Important: These changes are available for Android platform.
+
 # 3.3.1
 
 - Fixed #427: missing connection check on Android (thanks moshe5745)

@@ -33,6 +33,12 @@ import static java.net.Proxy.Type.HTTP;
 
 import android.util.Log;
 
+import com.silkimen.cordovahttp.CordovaObservableCallbackContext;
+
+import org.apache.cordova.PluginResult;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -2484,7 +2490,7 @@ public class HttpRequest {
    * @return this request
    * @throws IOException
    */
-  protected HttpRequest copy(final InputStream input, final OutputStream output, final Long size) throws IOException {
+  protected HttpRequest copy(final InputStream input, final OutputStream output, final Long size, final UploadProgress uploadProgress) throws IOException {
     return new CloseOperation<HttpRequest>(input, ignoreCloseExceptions) {
 
       @Override
@@ -2495,7 +2501,8 @@ public class HttpRequest {
           output.write(buffer, 0, read);
           totalWritten += read;
           try {
-            progress.onUpload(totalWritten, size);
+           // progress.onUpload(totalWritten, size);
+             uploadProgress.onUpload(totalWritten, size);
           } catch (Exception e) {
             Log.w("Upload", "Progress callback failed", e);
           }
@@ -2508,7 +2515,7 @@ public class HttpRequest {
   }
 
 
-  protected void uploadStream(final InputStream input, final Long totalSize) throws IOException {
+  protected void uploadStream(final InputStream input, final Long totalSize, final UploadProgress uploadProgress) throws IOException {
     byte[] buffer = new byte[8192];
     int read;
     long totalWritten = 0;
@@ -2519,7 +2526,9 @@ public class HttpRequest {
 
       if (totalSize != null) {
         try {
-          progress.onUpload(totalWritten, totalSize);
+          // progress.onUpload(totalWritten, totalSize);
+          // send to backend
+          uploadProgress.onUpload(totalWritten, totalSize);
         } catch (Exception e) {
           Log.w("Upload", "Progress callback failed", e);
         }
@@ -2527,6 +2536,23 @@ public class HttpRequest {
     }
 
     output.flush();
+  }
+
+  protected  void sendProgress(final Long transferred, final Long total, final CordovaObservableCallbackContext callbackContext){
+     final String TAG = "Cordova-Plugin-HTTP";
+    JSONObject json = new JSONObject();
+    try {
+      json.put("isProgress", true);
+      json.put("transferred", transferred);
+      json.put("total", total);
+
+      PluginResult result = new PluginResult(PluginResult.Status.OK, json);
+      result.setKeepCallback(true);
+
+      callbackContext.getCallbackContext().sendPluginResult(result);
+    } catch (JSONException e) {
+      Log.e(TAG, "onUpload progress error", e);
+    }
   }
 
 
@@ -2851,16 +2877,16 @@ public class HttpRequest {
   }
 
 
-  public HttpRequest part(final String name, final String filename, final String contentType, final InputStream part, final Long size, final Boolean fileExist)
+  public HttpRequest part(final String name, final String filename, final String contentType, final InputStream part, final Long size, final Boolean fileExist, final UploadProgress uploadProgress)
           throws HttpRequestException {
     try {
-      this.connection.setChunkedStreamingMode(8192);
+      this.connection.setChunkedStreamingMode(bufferSize);
       startPart();
       writePartHeader(name, filename, contentType);
       if(!fileExist){
-        copy(part, output, size);
+        copy(part, output, size, uploadProgress);
       }else{
-        uploadStream(part, size);
+        uploadStream(part, size, uploadProgress);
       }
     } catch (IOException e) {
       throw new HttpRequestException(e);
