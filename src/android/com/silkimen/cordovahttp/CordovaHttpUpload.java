@@ -47,12 +47,17 @@ class CordovaHttpUpload extends CordovaHttpBase {
     for (int i = 0; i < this.filePaths.length(); ++i) {
       String uploadName = this.uploadNames.getString(i);
       String filePath = this.filePaths.getString(i);
-
+      
       Uri fileUri = Uri.parse(filePath);
+      filePath = fileUri.getPath();
+      Log.d(TAG, "File URL: "+ fileUri.toString());
+      Log.d(TAG, "File Path: "+ filePath);
+      
 
       // File Scheme
       if (ContentResolver.SCHEME_FILE.equals(fileUri.getScheme())) {
-        File file = new File(new URI(filePath));
+       // File file = new File(new URI(filePath));
+        File file = new File(filePath);
         String fileName = file.getName().trim();
         String mimeType = this.getMimeTypeFromFileName(fileName);
 
